@@ -1,12 +1,16 @@
 export type Outcome = '1' | 'X' | '2' | null;
 
-export type GamePoolSize = 13 | 17;
+export type GamePoolSize = number;
 
 export interface GameItem {
   id: number;
   label: string;
   homeTeam: string;
   awayTeam: string;
+  kickoffTime?: string;
+  oddsHome?: string;
+  oddsDraw?: string;
+  oddsAway?: string;
   lockedOutcome: Outcome;
 }
 

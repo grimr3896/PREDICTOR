@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { Upload, FileDown } from 'lucide-react';
 import { GameItem, GamePoolSize, Outcome } from './types';
 import { calculateStats, SAMPLE_TEAMS_17 } from './utils/combinationLogic';
+import { parseFixturesCsv, downloadCsvTemplate } from './utils/csvImport';
 import { Header } from './components/Header';
 import { StatsBar } from './components/StatsBar';
 import { GameRow } from './components/GameRow';
 import { CombinationTable } from './components/CombinationTable';
 import { ExportModal } from './components/ExportModal';
-
+import { ImportNotification } from './components/ImportNotification';
 
 function createInitialGames(count: GamePoolSize): GameItem[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -23,7 +25,15 @@ export default function App() {
   const [games, setGames] = useState<GameItem[]>(() => createInitialGames(13));
   const [showTable, setShowTable] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [importNotification, setImportNotification] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    warnings?: string[];
+  } | null>(null);
+
+  const [isDragging, setIsDragging] = useState<boolean>(false);
   const tableRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Compute stats in real-time
   const stats = useMemo(() => {
@@ -32,26 +42,27 @@ export default function App() {
 
   // Handle switching pool size (13 vs 17)
   const handlePoolSizeChange = (newSize: GamePoolSize) => {
-    if (newSize === poolSize) return;
     setPoolSize(newSize);
     setGames((prevGames) => {
-      if (newSize > prevGames.length) {
-        // Expand
-        const addition = Array.from(
-          { length: newSize - prevGames.length },
-          (_, i) => ({
-            id: prevGames.length + i + 1,
-            label: `Game ${prevGames.length + i + 1}`,
+      const result: GameItem[] = [];
+      for (let i = 0; i < newSize; i++) {
+        if (i < prevGames.length) {
+          result.push({
+            ...prevGames[i],
+            id: i + 1,
+            label: `Game ${i + 1}`,
+          });
+        } else {
+          result.push({
+            id: i + 1,
+            label: `Game ${i + 1}`,
             homeTeam: '',
             awayTeam: '',
             lockedOutcome: null,
-          })
-        );
-        return [...prevGames, ...addition];
-      } else {
-        // Shrink to 13
-        return prevGames.slice(0, newSize);
+          });
+        }
       }
+      return result;
     });
   };
 
@@ -122,8 +133,84 @@ export default function App() {
     }, 50);
   };
 
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setImportNotification({
+        type: 'error',
+        message: 'Please select a .csv file. Other file formats are not accepted.',
+      });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = (e.target?.result as string) || '';
+      const result = parseFixturesCsv(text);
+      if (!result.success) {
+        setImportNotification({
+          type: 'error',
+          message: result.errorMessage || 'Failed to parse CSV.',
+        });
+      } else if (result.games) {
+        setGames(result.games);
+        setPoolSize(result.games.length);
+        setImportNotification({
+          type: 'success',
+          message: `${result.importedCount} games imported successfully`,
+          warnings: result.warnings,
+        });
+      }
+    };
+    reader.onerror = () => {
+      setImportNotification({
+        type: 'error',
+        message: 'Error reading the CSV file. Please try again.',
+      });
+    };
+    reader.readAsText(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileSelected(file);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans selection:bg-emerald-100 selection:text-emerald-900">
+      {/* Hidden file input for CSV Import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        id="csv-fixtures-file-input"
+        accept=".csv"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            handleFileSelected(file);
+          }
+          e.target.value = '';
+        }}
+      />
+
       {/* Top Navigation */}
       <Header
         poolSize={poolSize}
@@ -132,6 +219,8 @@ export default function App() {
         onLoadSampleMatches={handleLoadSampleMatches}
         onRandomLock={handleRandomLock}
         lockedCount={stats.lockedCount}
+        onImportCsvClick={handleImportClick}
+        onDownloadTemplate={downloadCsvTemplate}
       />
 
       {/* Prominent Live Calculation Counter & Key Metrics */}
@@ -147,15 +236,37 @@ export default function App() {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 gap-6">
           {/* Section 1: Game Setup and Outcome Matrix */}
-          <div className="bg-white border border-zinc-200 rounded-2xl p-4 sm:p-6 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-zinc-100">
+          <div
+            id="fixtures-setup-card"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`bg-white border rounded-2xl p-4 sm:p-6 shadow-xs transition-all duration-200 ${
+              isDragging
+                ? 'border-emerald-500 ring-4 ring-emerald-500/20 bg-emerald-50/10 scale-[1.002]'
+                : 'border-zinc-200'
+            }`}
+          >
+            {/* Import Notification Banner if any */}
+            {importNotification && (
+              <ImportNotification
+                type={importNotification.type}
+                message={importNotification.message}
+                warnings={importNotification.warnings}
+                onDismiss={() => setImportNotification(null)}
+              />
+            )}
+
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 mb-4 border-b border-zinc-100">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-zinc-900 flex items-center gap-2">
-                  <span>Jackpot Matches Setup</span>
-                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600 border border-zinc-200">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-zinc-900">
+                    Jackpot Matches Setup
+                  </h2>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200">
                     {poolSize} Matches
                   </span>
-                </h2>
+                </div>
                 <p className="text-xs text-zinc-500 mt-1">
                   Select <strong className="text-emerald-700">1</strong> (Home),{' '}
                   <strong className="text-amber-700">X</strong> (Draw), or{' '}
@@ -164,24 +275,52 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Legend */}
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  1 = Home
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  X = Draw
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-sky-50 border border-sky-200 text-sky-800 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-sky-500" />
-                  2 = Away
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-zinc-100 border border-zinc-200 text-zinc-600 font-medium">
-                  <span className="w-2 h-2 rounded-full bg-zinc-400" />
-                  ? = 3 choices
-                </span>
+              {/* Action Toolbar & Legend */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* CSV Import & Template Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    id="import-fixtures-csv-btn"
+                    onClick={handleImportClick}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-xs"
+                    title="Import fixtures from a CSV file"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Import Fixtures (CSV)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="download-csv-template-btn"
+                    onClick={downloadCsvTemplate}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-zinc-700 bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 rounded-lg transition-colors cursor-pointer"
+                    title="Download blank CSV template with example rows"
+                  >
+                    <FileDown className="w-3.5 h-3.5 text-zinc-500" />
+                    <span>Download CSV template</span>
+                  </button>
+                </div>
+
+                {/* Legend */}
+                <div className="hidden sm:flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium text-[11px]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    1 = Home
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 border border-amber-200 text-amber-800 font-medium text-[11px]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    X = Draw
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-sky-50 border border-sky-200 text-sky-800 font-medium text-[11px]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                    2 = Away
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-100 border border-zinc-200 text-zinc-600 font-medium text-[11px]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+                    ? = Unlocked
+                  </span>
+                </div>
               </div>
             </div>
 

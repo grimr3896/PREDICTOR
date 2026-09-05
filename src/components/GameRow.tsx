@@ -1,5 +1,5 @@
 import React from 'react';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, Clock } from 'lucide-react';
 import { GameItem, Outcome } from '../types';
 
 interface GameRowProps {
@@ -49,7 +49,7 @@ export const GameRow: React.FC<GameRowProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         {/* Game Label & Team Names */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1">
-          {/* Game Badge */}
+          {/* Game Badge and optional kickoff time */}
           <div className="flex items-center gap-2">
             <span
               className={`inline-flex items-center justify-center font-bold text-xs px-2.5 py-1 rounded-lg border font-mono ${
@@ -63,6 +63,15 @@ export const GameRow: React.FC<GameRowProps> = ({
             <span className="text-xs font-semibold text-zinc-900 sm:hidden">
               {game.label}
             </span>
+            {game.kickoffTime && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] font-mono text-zinc-600 bg-zinc-100 px-2 py-0.5 rounded-md border border-zinc-200"
+                title={`Kickoff: ${game.kickoffTime}`}
+              >
+                <Clock className="w-3 h-3 text-zinc-400" />
+                {game.kickoffTime}
+              </span>
+            )}
           </div>
 
           {/* Optional Team inputs */}
@@ -128,7 +137,16 @@ export const GameRow: React.FC<GameRowProps> = ({
               }`}
               title="Lock as Home Win (1)"
             >
-              1 <span className="hidden sm:inline font-normal text-[10px] opacity-80">(Home)</span>
+              <div className="flex flex-col items-center leading-tight">
+                <span>
+                  1 <span className="hidden sm:inline font-normal text-[10px] opacity-80">(Home)</span>
+                </span>
+                {game.oddsHome && (
+                  <span className="text-[10px] font-mono font-medium opacity-90">
+                    {game.oddsHome}
+                  </span>
+                )}
+              </div>
             </button>
 
             {/* X: Draw */}
@@ -143,7 +161,16 @@ export const GameRow: React.FC<GameRowProps> = ({
               }`}
               title="Lock as Draw (X)"
             >
-              X <span className="hidden sm:inline font-normal text-[10px] opacity-80">(Draw)</span>
+              <div className="flex flex-col items-center leading-tight">
+                <span>
+                  X <span className="hidden sm:inline font-normal text-[10px] opacity-80">(Draw)</span>
+                </span>
+                {game.oddsDraw && (
+                  <span className="text-[10px] font-mono font-medium opacity-90">
+                    {game.oddsDraw}
+                  </span>
+                )}
+              </div>
             </button>
 
             {/* 2: Away */}
@@ -158,7 +185,16 @@ export const GameRow: React.FC<GameRowProps> = ({
               }`}
               title="Lock as Away Win (2)"
             >
-              2 <span className="hidden sm:inline font-normal text-[10px] opacity-80">(Away)</span>
+              <div className="flex flex-col items-center leading-tight">
+                <span>
+                  2 <span className="hidden sm:inline font-normal text-[10px] opacity-80">(Away)</span>
+                </span>
+                {game.oddsAway && (
+                  <span className="text-[10px] font-mono font-medium opacity-90">
+                    {game.oddsAway}
+                  </span>
+                )}
+              </div>
             </button>
 
             {/* Not sure / Unlocked */}
@@ -173,8 +209,13 @@ export const GameRow: React.FC<GameRowProps> = ({
               }`}
               title="Unlock (All 3 outcomes generated)"
             >
-              <span className="sm:hidden">?</span>
-              <span className="hidden sm:inline">Not sure</span>
+              <div className="flex flex-col items-center leading-tight">
+                <span className="sm:hidden">?</span>
+                <span className="hidden sm:inline">Not sure</span>
+                {(game.oddsHome || game.oddsDraw || game.oddsAway) && (
+                  <span className="text-[10px] text-zinc-400 font-normal">all 3</span>
+                )}
+              </div>
             </button>
           </div>
         </div>
