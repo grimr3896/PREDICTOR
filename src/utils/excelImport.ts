@@ -1,5 +1,6 @@
-import { GameItem } from '../types';
+import { GameItem, SingleOutcome } from '../types';
 import { EXPECTED_HEADERS, EXPECTED_HEADERS_STRING, CsvParseResult } from './csvImport';
+import { getGameChoices } from './combinationLogic';
 
 // TypeScript declaration for global SheetJS (XLSX)
 declare global {
@@ -209,6 +210,7 @@ export async function parseFixturesExcel(arrayBuffer: ArrayBuffer): Promise<CsvP
       oddsHome: oddsHome || undefined,
       oddsDraw: oddsDraw || undefined,
       oddsAway: oddsAway || undefined,
+      selectedOutcomes: [],
       lockedOutcome: null, // "Not sure" (unlocked) by default
     });
   }
@@ -325,10 +327,13 @@ export async function generateExcelBlob(
 ): Promise<{ blob: Blob | null; actualRows: number }> {
   const XLSX = await getXLSX();
 
-  const unlockedIndices: number[] = [];
+  const gameChoicesList: SingleOutcome[][] = games.map((g) => getGameChoices(g));
+  const gameChoiceCounts: number[] = gameChoicesList.map((c) => c.length);
+  const variableIndices: number[] = [];
+
   for (let i = 0; i < games.length; i++) {
-    if (games[i].lockedOutcome === null) {
-      unlockedIndices.push(i);
+    if (gameChoiceCounts[i] > 1) {
+      variableIndices.push(i);
     }
   }
 
@@ -350,15 +355,14 @@ export async function generateExcelBlob(
   const startTime = performance.now();
   let lastProgressUpdate = startTime;
 
-  const currentOutcomes: ('1' | 'X' | '2')[] = new Array(games.length);
+  const currentOutcomes: SingleOutcome[] = new Array(games.length);
   for (let g = 0; g < games.length; g++) {
-    if (games[g].lockedOutcome !== null) {
-      currentOutcomes[g] = games[g].lockedOutcome as ('1' | 'X' | '2');
+    if (gameChoiceCounts[g] === 1) {
+      currentOutcomes[g] = gameChoicesList[g][0];
     }
   }
 
-  const CHOICES: ('1' | 'X' | '2')[] = ['1', 'X', '2'];
-  const numUnlocked = unlockedIndices.length;
+  const numVariables = variableIndices.length;
 
   while (generated < effectiveTotal) {
     if (shouldCancel()) {
@@ -369,9 +373,11 @@ export async function generateExcelBlob(
 
     for (let i = generated; i < batchEnd; i++) {
       let rem = i;
-      for (let k = numUnlocked - 1; k >= 0; k--) {
-        currentOutcomes[unlockedIndices[k]] = CHOICES[rem % 3];
-        rem = Math.floor(rem / 3);
+      for (let k = numVariables - 1; k >= 0; k--) {
+        const gIdx = variableIndices[k];
+        const base = gameChoiceCounts[gIdx];
+        currentOutcomes[gIdx] = gameChoicesList[gIdx][rem % base];
+        rem = Math.floor(rem / base);
       }
       const code = currentOutcomes.join('');
       rows.push([i + 1, code, ...currentOutcomes]);

@@ -178,6 +178,7 @@ export function parseFixturesCsv(csvText: string): CsvParseResult {
       oddsHome: oddsHome || undefined,
       oddsDraw: oddsDraw || undefined,
       oddsAway: oddsAway || undefined,
+      selectedOutcomes: [],
       lockedOutcome: null, // "Not sure" (unlocked) by default
     });
   }

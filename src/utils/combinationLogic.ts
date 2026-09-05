@@ -1,28 +1,60 @@
-import { GameItem, Outcome, GeneratedCombination, CombinationStats } from '../types';
+import { GameItem, Outcome, SingleOutcome, GeneratedCombination, CombinationStats } from '../types';
 
-export const OUTCOME_MAP: Record<number, '1' | 'X' | '2'> = {
+export const OUTCOME_MAP: Record<number, SingleOutcome> = {
   0: '1',
   1: 'X',
   2: '2',
 };
 
-export const OUTCOME_NAMES: Record<'1' | 'X' | '2', string> = {
+export const OUTCOME_NAMES: Record<SingleOutcome, string> = {
   '1': 'Home Win (1)',
   'X': 'Draw (X)',
   '2': 'Away Win (2)',
 };
 
+/**
+ * Returns the active allowed outcomes for a given game.
+ * If 1 option selected: single lock (1 choice).
+ * If 2 options selected: double chance (2 choices, e.g. ['1', 'X']).
+ * If 0 or 3 options selected: all 3 outcomes allowed ('1', 'X', '2').
+ */
+export function getGameChoices(game: GameItem): SingleOutcome[] {
+  if (game.selectedOutcomes && game.selectedOutcomes.length > 0 && game.selectedOutcomes.length < 3) {
+    return game.selectedOutcomes;
+  }
+  if (game.lockedOutcome) {
+    return [game.lockedOutcome];
+  }
+  return ['1', 'X', '2'];
+}
+
 export function calculateStats(games: GameItem[]): CombinationStats {
   const total = Math.pow(3, games.length);
-  const lockedCount = games.filter((g) => g.lockedOutcome !== null).length;
-  const unlockedCount = games.length - lockedCount;
-  const remainingCombinations = Math.pow(3, unlockedCount);
+  let lockedCount = 0;
+  let doubleCount = 0;
+  let unlockedCount = 0;
+  let remainingCombinations = 1;
+
+  for (const g of games) {
+    const choices = getGameChoices(g);
+    const count = choices.length;
+    if (count === 1) {
+      lockedCount++;
+    } else if (count === 2) {
+      doubleCount++;
+    } else {
+      unlockedCount++;
+    }
+    remainingCombinations *= count;
+  }
+
   const reductionPercentage =
     total > 0 ? ((total - remainingCombinations) / total) * 100 : 0;
 
   return {
     totalCombinations: total,
     lockedCount,
+    doubleCount,
     unlockedCount,
     remainingCombinations,
     reductionPercentage,
@@ -31,27 +63,31 @@ export function calculateStats(games: GameItem[]): CombinationStats {
 
 /**
  * Returns the combination at a specific 0-based index without storing the entire list in memory.
+ * Uses mixed-radix number decomposition for instant O(N) evaluation.
  */
 export function getCombinationAtIndex(
   index: number,
   games: GameItem[],
-  unlockedIndices: number[]
+  variableIndices: number[],
+  gameChoicesList: SingleOutcome[][],
+  gameChoiceCounts: number[]
 ): GeneratedCombination {
-  const outcomes: ('1' | 'X' | '2')[] = new Array(games.length);
+  const outcomes: SingleOutcome[] = new Array(games.length);
 
-  // Fill in locked games
+  // Fill in fixed single-choice games
   for (let i = 0; i < games.length; i++) {
-    if (games[i].lockedOutcome !== null) {
-      outcomes[i] = games[i].lockedOutcome as '1' | 'X' | '2';
+    if (gameChoiceCounts[i] === 1) {
+      outcomes[i] = gameChoicesList[i][0];
     }
   }
 
-  // Fill in unlocked games from ternary representation of index
+  // Decode variable games from mixed-radix representation of index
   let remainder = index;
-  for (let j = 0; j < unlockedIndices.length; j++) {
-    const digit = remainder % 3;
-    outcomes[unlockedIndices[j]] = OUTCOME_MAP[digit];
-    remainder = Math.floor(remainder / 3);
+  for (let j = variableIndices.length - 1; j >= 0; j--) {
+    const gIdx = variableIndices[j];
+    const base = gameChoiceCounts[gIdx];
+    outcomes[gIdx] = gameChoicesList[gIdx][remainder % base];
+    remainder = Math.floor(remainder / base);
   }
 
   const code = outcomes.join('');
@@ -72,10 +108,13 @@ export function getPageCombinations(
   totalRemaining: number,
   games: GameItem[]
 ): GeneratedCombination[] {
-  const unlockedIndices: number[] = [];
+  const gameChoicesList: SingleOutcome[][] = games.map((g) => getGameChoices(g));
+  const gameChoiceCounts: number[] = gameChoicesList.map((c) => c.length);
+  const variableIndices: number[] = [];
+
   for (let i = 0; i < games.length; i++) {
-    if (games[i].lockedOutcome === null) {
-      unlockedIndices.push(i);
+    if (gameChoiceCounts[i] > 1) {
+      variableIndices.push(i);
     }
   }
 
@@ -84,7 +123,15 @@ export function getPageCombinations(
 
   const results: GeneratedCombination[] = [];
   for (let idx = startIndex; idx < endIndex; idx++) {
-    results.push(getCombinationAtIndex(idx, games, unlockedIndices));
+    results.push(
+      getCombinationAtIndex(
+        idx,
+        games,
+        variableIndices,
+        gameChoicesList,
+        gameChoiceCounts
+      )
+    );
   }
 
   return results;
@@ -99,7 +146,7 @@ export interface CsvProgress {
 
 /**
  * Generates CSV in asynchronous chunks using Blob parts to minimize memory usage
- * and avoid freezing the main UI thread.
+ * and avoid freezing the main UI thread. Supports mixed single, double, and triple choices.
  */
 export async function generateCsvBlob(
   games: GameItem[],
@@ -108,10 +155,13 @@ export async function generateCsvBlob(
   shouldCancel: () => boolean,
   maxRows?: number
 ): Promise<{ blob: Blob | null; actualRows: number }> {
-  const unlockedIndices: number[] = [];
+  const gameChoicesList: SingleOutcome[][] = games.map((g) => getGameChoices(g));
+  const gameChoiceCounts: number[] = gameChoicesList.map((c) => c.length);
+  const variableIndices: number[] = [];
+
   for (let i = 0; i < games.length; i++) {
-    if (games[i].lockedOutcome === null) {
-      unlockedIndices.push(i);
+    if (gameChoiceCounts[i] > 1) {
+      variableIndices.push(i);
     }
   }
 
@@ -133,16 +183,15 @@ export async function generateCsvBlob(
   const startTime = performance.now();
   let lastProgressUpdate = startTime;
 
-  // Pre-allocate outcomes array and pre-fill locked indices
-  const currentOutcomes: ('1' | 'X' | '2')[] = new Array(games.length);
+  // Pre-allocate outcomes array and pre-fill fixed games
+  const currentOutcomes: SingleOutcome[] = new Array(games.length);
   for (let g = 0; g < games.length; g++) {
-    if (games[g].lockedOutcome !== null) {
-      currentOutcomes[g] = games[g].lockedOutcome as ('1' | 'X' | '2');
+    if (gameChoiceCounts[g] === 1) {
+      currentOutcomes[g] = gameChoicesList[g][0];
     }
   }
 
-  const CHOICES: ('1' | 'X' | '2')[] = ['1', 'X', '2'];
-  const numUnlocked = unlockedIndices.length;
+  const numVariables = variableIndices.length;
 
   while (generated < effectiveTotal) {
     if (shouldCancel()) {
@@ -156,9 +205,11 @@ export async function generateCsvBlob(
 
     for (let i = generated; i < batchEnd; i++) {
       let rem = i;
-      for (let k = numUnlocked - 1; k >= 0; k--) {
-        currentOutcomes[unlockedIndices[k]] = CHOICES[rem % 3];
-        rem = Math.floor(rem / 3);
+      for (let k = numVariables - 1; k >= 0; k--) {
+        const gIdx = variableIndices[k];
+        const base = gameChoiceCounts[gIdx];
+        currentOutcomes[gIdx] = gameChoicesList[gIdx][rem % base];
+        rem = Math.floor(rem / base);
       }
       const code = currentOutcomes.join('');
       // Format: index, code, outcome1, outcome2, ...

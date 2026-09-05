@@ -1,4 +1,5 @@
-export type Outcome = '1' | 'X' | '2' | null;
+export type SingleOutcome = '1' | 'X' | '2';
+export type Outcome = SingleOutcome | null;
 
 export type GamePoolSize = number;
 
@@ -11,12 +12,14 @@ export interface GameItem {
   oddsHome?: string;
   oddsDraw?: string;
   oddsAway?: string;
+  selectedOutcomes: SingleOutcome[];
   lockedOutcome: Outcome;
 }
 
 export interface CombinationStats {
   totalCombinations: number;
   lockedCount: number;
+  doubleCount: number;
   unlockedCount: number;
   remainingCombinations: number;
   reductionPercentage: number;

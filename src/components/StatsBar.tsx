@@ -46,7 +46,8 @@ export const StatsBar: React.FC<StatsBarProps> = ({
                   Live Calculation
                 </span>
                 <span className="text-xs text-zinc-300 font-medium">
-                  {stats.lockedCount} of {poolSize} games locked
+                  {stats.lockedCount} single locked
+                  {stats.doubleCount > 0 ? `, ${stats.doubleCount} double chance` : ''} of {poolSize} games
                 </span>
               </div>
 
@@ -73,15 +74,15 @@ export const StatsBar: React.FC<StatsBarProps> = ({
                 <div className="w-36 sm:w-56 bg-zinc-800 rounded-full h-2.5 overflow-hidden border border-zinc-700/80 p-0.5">
                   <div
                     className="h-full bg-emerald-400 rounded-full transition-all duration-200 ease-out"
-                    style={{ width: `${(stats.lockedCount / poolSize) * 100}%` }}
+                    style={{ width: `${((stats.lockedCount + stats.doubleCount * 0.5) / poolSize) * 100}%` }}
                   />
                 </div>
                 <span className="text-xs font-semibold text-emerald-400 font-mono">
-                  {stats.lockedCount} of {poolSize} games locked
+                  {stats.lockedCount + stats.doubleCount} of {poolSize} customized
                 </span>
-                {stats.lockedCount > 0 && (
+                {(stats.lockedCount > 0 || stats.doubleCount > 0) && (
                   <span className="text-[11px] text-zinc-400 font-mono">
-                    ({lockedPercentage}%)
+                    ({Math.round(((stats.lockedCount + stats.doubleCount) / poolSize) * 100)}%)
                   </span>
                 )}
                 <span className="text-xs text-zinc-400">
