@@ -53,7 +53,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       });
       isCancelledRef.current = false;
       if (downloadUrl) {
-        URL.revokeObjectURL(downloadUrl);
+        const urlToRevoke = downloadUrl;
+        setTimeout(() => URL.revokeObjectURL(urlToRevoke), 60000);
         setDownloadUrl(null);
       }
     }
@@ -88,13 +89,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
       setStage('done');
 
-      // Auto-trigger browser download
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = generatedName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      // Attempt browser auto-download safely
+      try {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = generatedName;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (document.body.contains(a)) {
+            document.body.removeChild(a);
+          }
+        }, 2000);
+      } catch (autoDlErr) {
+        console.warn('Auto download blocked by browser, manual button available:', autoDlErr);
+      }
     } catch (err) {
       console.error('Export error:', err);
       setStage('error');

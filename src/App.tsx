@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Upload, FileDown } from 'lucide-react';
+import { Upload, FileDown, FileSpreadsheet } from 'lucide-react';
 import { GameItem, GamePoolSize, Outcome } from './types';
 import { calculateStats, SAMPLE_TEAMS_17 } from './utils/combinationLogic';
 import { parseFixturesCsv, downloadCsvTemplate } from './utils/csvImport';
+import { parseFixturesExcel, downloadExcelTemplate } from './utils/excelImport';
 import { Header } from './components/Header';
 import { StatsBar } from './components/StatsBar';
 import { GameRow } from './components/GameRow';
@@ -138,40 +139,88 @@ export default function App() {
   };
 
   const handleFileSelected = (file: File) => {
-    if (!file.name.toLowerCase().endsWith('.csv')) {
+    const fileName = file.name.toLowerCase();
+    const isCsv = fileName.endsWith('.csv');
+    const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+    if (!isCsv && !isExcel) {
       setImportNotification({
         type: 'error',
-        message: 'Please select a .csv file. Other file formats are not accepted.',
+        message: 'Unsupported file format. Please upload a .csv, .xlsx, or .xls file.',
       });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = (e.target?.result as string) || '';
-      const result = parseFixturesCsv(text);
-      if (!result.success) {
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          if (!arrayBuffer) {
+            setImportNotification({
+              type: 'error',
+              message: 'Failed to read Excel file data.',
+            });
+            return;
+          }
+          const result = await parseFixturesExcel(arrayBuffer);
+          if (!result.success) {
+            setImportNotification({
+              type: 'error',
+              message: result.errorMessage || 'Failed to parse Excel file.',
+            });
+          } else if (result.games) {
+            setGames(result.games);
+            setPoolSize(result.games.length);
+            setImportNotification({
+              type: 'success',
+              message: `${result.importedCount} games imported successfully from Excel`,
+              warnings: result.warnings,
+            });
+          }
+        } catch (err) {
+          setImportNotification({
+            type: 'error',
+            message: `Error processing Excel file: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          });
+        }
+      };
+      reader.onerror = () => {
         setImportNotification({
           type: 'error',
-          message: result.errorMessage || 'Failed to parse CSV.',
+          message: 'Error reading the Excel file. Please try again.',
         });
-      } else if (result.games) {
-        setGames(result.games);
-        setPoolSize(result.games.length);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // CSV import
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = (e.target?.result as string) || '';
+        const result = parseFixturesCsv(text);
+        if (!result.success) {
+          setImportNotification({
+            type: 'error',
+            message: result.errorMessage || 'Failed to parse CSV.',
+          });
+        } else if (result.games) {
+          setGames(result.games);
+          setPoolSize(result.games.length);
+          setImportNotification({
+            type: 'success',
+            message: `${result.importedCount} games imported successfully from CSV`,
+            warnings: result.warnings,
+          });
+        }
+      };
+      reader.onerror = () => {
         setImportNotification({
-          type: 'success',
-          message: `${result.importedCount} games imported successfully`,
-          warnings: result.warnings,
+          type: 'error',
+          message: 'Error reading the CSV file. Please try again.',
         });
-      }
-    };
-    reader.onerror = () => {
-      setImportNotification({
-        type: 'error',
-        message: 'Error reading the CSV file. Please try again.',
-      });
-    };
-    reader.readAsText(file);
+      };
+      reader.readAsText(file);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -195,12 +244,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-900 flex flex-col font-sans selection:bg-emerald-100 selection:text-emerald-900">
-      {/* Hidden file input for CSV Import */}
+      {/* Hidden file input for CSV & Excel Import */}
       <input
         ref={fileInputRef}
         type="file"
-        id="csv-fixtures-file-input"
-        accept=".csv"
+        id="fixtures-file-input"
+        accept=".csv,.xlsx,.xls"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
@@ -219,8 +268,9 @@ export default function App() {
         onLoadSampleMatches={handleLoadSampleMatches}
         onRandomLock={handleRandomLock}
         lockedCount={stats.lockedCount}
-        onImportCsvClick={handleImportClick}
-        onDownloadTemplate={downloadCsvTemplate}
+        onImportClick={handleImportClick}
+        onDownloadCsvTemplate={downloadCsvTemplate}
+        onDownloadExcelTemplate={downloadExcelTemplate}
       />
 
       {/* Prominent Live Calculation Counter & Key Metrics */}
@@ -277,17 +327,17 @@ export default function App() {
 
               {/* Action Toolbar & Legend */}
               <div className="flex flex-wrap items-center gap-3">
-                {/* CSV Import & Template Buttons */}
-                <div className="flex items-center gap-2">
+                {/* Fixture Import & Template Buttons */}
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    id="import-fixtures-csv-btn"
+                    id="import-fixtures-btn"
                     onClick={handleImportClick}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-950 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-xs"
-                    title="Import fixtures from a CSV file"
+                    title="Import fixtures from a CSV or Excel (.xlsx / .xls) file"
                   >
                     <Upload className="w-3.5 h-3.5 text-emerald-700" />
-                    <span>Import Fixtures (CSV)</span>
+                    <span>Import Fixtures (.csv, .xlsx)</span>
                   </button>
 
                   <button
@@ -299,6 +349,17 @@ export default function App() {
                   >
                     <FileDown className="w-3.5 h-3.5 text-zinc-500" />
                     <span>Download CSV template</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    id="download-excel-template-btn"
+                    onClick={downloadExcelTemplate}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-emerald-800 bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
+                    title="Download blank Excel (.xlsx) template with example rows"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Download Excel template</span>
                   </button>
                 </div>
 

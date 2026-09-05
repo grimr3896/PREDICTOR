@@ -21,9 +21,15 @@ export interface CsvParseResult {
 }
 
 /**
- * Splits a CSV text into array of rows, properly handling quotes and newlines within quotes.
+ * Splits a CSV text into array of rows, properly handling quotes, delimiters (comma or semicolon), and newlines.
  */
 export function parseCsvText(csvText: string): string[][] {
+  // Detect delimiter based on first line
+  const firstLine = csvText.split(/\r?\n/)[0] || '';
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  const semicolonCount = (firstLine.match(/;/g) || []).length;
+  const delimiter = semicolonCount > commaCount ? ';' : ',';
+
   const rows: string[][] = [];
   let currentRow: string[] = [];
   let currentField = '';
@@ -40,7 +46,7 @@ export function parseCsvText(csvText: string): string[][] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (char === ',' && !inQuotes) {
+    } else if (char === delimiter && !inQuotes) {
       currentRow.push(currentField.trim());
       currentField = '';
     } else if ((char === '\r' || char === '\n') && !inQuotes) {
@@ -86,9 +92,16 @@ export function parseFixturesCsv(csvText: string): CsvParseResult {
     };
   }
 
-  // Header Validation (exact header required in order, case-insensitive, trimmed)
+  // Header Validation (exact header required in order, case-insensitive, trimmed, stripping BOM and quotes)
   const rawHeaders = rows[0];
-  const cleanedHeaders = rawHeaders.map((h) => h.toLowerCase().trim().replace(/^[\uFEFF]/, '')); // strip UTF-8 BOM if present
+  const cleanedHeaders = rawHeaders.map((h) =>
+    h
+      .toLowerCase()
+      .trim()
+      .replace(/^[\uFEFF]/, '')
+      .replace(/^"+|"+$/g, '')
+      .trim()
+  );
 
   const headersMatch =
     cleanedHeaders.length >= EXPECTED_HEADERS.length &&
@@ -198,6 +211,7 @@ export function parseFixturesCsv(csvText: string): CsvParseResult {
 
 /**
  * Downloads a sample CSV template with correct headers and 2 filled example rows.
+ * Uses robust download technique with delayed URL revocation to avoid "Failed - Network error".
  */
 export function downloadCsvTemplate(): void {
   const content =
@@ -205,13 +219,34 @@ export function downloadCsvTemplate(): void {
     '1,Rayo Vallecano,Racing Santander,19:30,2.25,3.50,3.25\r\n' +
     '5,Everton,Manchester United,16:00,3.05,3.45,2.25\r\n';
 
-  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'jackpot_fixtures_template.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  try {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'jackpot_fixtures_template.csv';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+      URL.revokeObjectURL(url);
+    }, 60000);
+  } catch {
+    // Fallback using encoded URI
+    const encoded = 'data:text/csv;charset=utf-8,' + encodeURIComponent(content);
+    const a = document.createElement('a');
+    a.href = encoded;
+    a.download = 'jackpot_fixtures_template.csv';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
+    }, 1000);
+  }
 }

@@ -130,6 +130,17 @@ export async function generateCsvBlob(
   const startTime = performance.now();
   let lastProgressUpdate = startTime;
 
+  // Pre-allocate outcomes array and pre-fill locked indices
+  const currentOutcomes: ('1' | 'X' | '2')[] = new Array(games.length);
+  for (let g = 0; g < games.length; g++) {
+    if (games[g].lockedOutcome !== null) {
+      currentOutcomes[g] = games[g].lockedOutcome as ('1' | 'X' | '2');
+    }
+  }
+
+  const CHOICES: ('1' | 'X' | '2')[] = ['1', 'X', '2'];
+  const numUnlocked = unlockedIndices.length;
+
   while (generated < totalRemaining) {
     if (shouldCancel()) {
       return null;
@@ -139,9 +150,14 @@ export async function generateCsvBlob(
     let chunkString = '';
 
     for (let i = generated; i < batchEnd; i++) {
-      const combo = getCombinationAtIndex(i, games, unlockedIndices);
+      let rem = i;
+      for (let k = numUnlocked - 1; k >= 0; k--) {
+        currentOutcomes[unlockedIndices[k]] = CHOICES[rem % 3];
+        rem = Math.floor(rem / 3);
+      }
+      const code = currentOutcomes.join('');
       // Format: index, code, outcome1, outcome2, ...
-      chunkString += `${combo.index},${combo.code},${combo.outcomes.join(',')}\r\n`;
+      chunkString += `${i + 1},${code},${currentOutcomes.join(',')}\r\n`;
     }
 
     chunks.push(chunkString);
