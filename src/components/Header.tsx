@@ -187,18 +187,18 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button
                 type="button"
-                id="reset-all-btn"
+                id="reset-all-locks-header-btn"
                 onClick={onResetAll}
                 disabled={lockedCount === 0}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold border rounded-lg transition-colors ${
                   lockedCount > 0
-                    ? 'text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-200 cursor-pointer'
+                    ? 'text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-300 cursor-pointer shadow-xs'
                     : 'text-zinc-400 bg-zinc-50 border-zinc-200 opacity-60 cursor-not-allowed'
                 }`}
-                title="Unlock every game"
+                title="Clear every locked game back to Not sure and restore full combination pool"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset</span>
+                <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+                <span>Reset all locks</span>
               </button>
             </div>
           </div>

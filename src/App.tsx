@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { Upload, FileDown, FileSpreadsheet } from 'lucide-react';
+import { Upload, FileDown, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { GameItem, GamePoolSize, Outcome } from './types';
 import { calculateStats, SAMPLE_TEAMS_17 } from './utils/combinationLogic';
 import { parseFixturesCsv, downloadCsvTemplate } from './utils/csvImport';
@@ -26,6 +26,7 @@ export default function App() {
   const [games, setGames] = useState<GameItem[]>(() => createInitialGames(13));
   const [showTable, setShowTable] = useState<boolean>(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [exportModalFormat, setExportModalFormat] = useState<'csv' | 'excel'>('csv');
   const [importNotification, setImportNotification] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -35,6 +36,11 @@ export default function App() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const tableRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenExport = (format: 'csv' | 'excel' = 'csv') => {
+    setExportModalFormat(format);
+    setIsExportModalOpen(true);
+  };
 
   // Compute stats in real-time
   const stats = useMemo(() => {
@@ -278,7 +284,8 @@ export default function App() {
         stats={stats}
         poolSize={poolSize}
         onGenerate={handleGenerate}
-        onOpenExport={() => setIsExportModalOpen(true)}
+        onOpenExport={handleOpenExport}
+        onResetAll={handleResetAll}
         isGeneratedViewActive={showTable}
       />
 
@@ -327,8 +334,24 @@ export default function App() {
 
               {/* Action Toolbar & Legend */}
               <div className="flex flex-wrap items-center gap-3">
-                {/* Fixture Import & Template Buttons */}
+                {/* Reset all locks & Fixture Import Buttons */}
                 <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    id="fixtures-reset-all-locks-btn"
+                    onClick={handleResetAll}
+                    disabled={stats.lockedCount === 0}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
+                      stats.lockedCount > 0
+                        ? 'text-rose-700 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 border-rose-300 cursor-pointer shadow-xs'
+                        : 'text-zinc-400 bg-zinc-50 border-zinc-200 opacity-40 cursor-not-allowed'
+                    }`}
+                    title="Clear every locked game back to Not sure"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-500" />
+                    <span>Reset all locks</span>
+                  </button>
+
                   <button
                     type="button"
                     id="import-fixtures-btn"
@@ -409,20 +432,34 @@ export default function App() {
                 )}
               </div>
 
-              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
                 <button
                   type="button"
+                  id="view-paginated-table-btn"
                   onClick={handleGenerate}
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-xs transition-colors cursor-pointer"
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-xs transition-colors cursor-pointer"
                 >
                   View Paginated Table
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsExportModalOpen(true)}
-                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-zinc-900 hover:bg-zinc-800 text-white shadow-xs transition-colors cursor-pointer"
+                  id="bottom-download-csv-btn"
+                  onClick={() => handleOpenExport('csv')}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-zinc-900 hover:bg-zinc-800 text-white shadow-xs transition-colors cursor-pointer"
+                  title="Export combinations to CSV"
                 >
-                  Download CSV
+                  <FileDown className="w-4 h-4 text-emerald-400" />
+                  <span>Download CSV</span>
+                </button>
+                <button
+                  type="button"
+                  id="bottom-export-excel-btn"
+                  onClick={() => handleOpenExport('excel')}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border border-emerald-300 shadow-xs transition-colors cursor-pointer"
+                  title="Export combinations as Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                  <span>Export as Excel</span>
                 </button>
               </div>
             </div>
@@ -434,19 +471,20 @@ export default function App() {
               <CombinationTable
                 games={games}
                 totalRemaining={stats.remainingCombinations}
-                onOpenExport={() => setIsExportModalOpen(true)}
+                onOpenExport={handleOpenExport}
               />
             </div>
           )}
         </div>
       </main>
 
-      {/* CSV Export Modal with streaming progress indicator */}
+      {/* CSV / Excel Export Modal with streaming progress indicator */}
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
         games={games}
         totalRemaining={stats.remainingCombinations}
+        initialFormat={exportModalFormat}
       />
 
       {/* Footer */}

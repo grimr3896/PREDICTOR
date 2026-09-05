@@ -310,3 +310,122 @@ export async function downloadExcelTemplate(): Promise<void> {
     }, 60000);
   }
 }
+
+/**
+ * Generates an Excel (.xlsx) workbook of combinations asynchronously in chunks.
+ * Uses SheetJS in-browser with a safe row budget (up to 50,000 rows) to ensure
+ * instantaneous generation without UI thread freeze or memory starvation.
+ */
+export async function generateExcelBlob(
+  games: GameItem[],
+  totalRemaining: number,
+  onProgress: (progress: { generated: number; total: number; percent: number; ratePerSec: number }) => void,
+  shouldCancel: () => boolean,
+  maxRows: number = 50000
+): Promise<{ blob: Blob | null; actualRows: number }> {
+  const XLSX = await getXLSX();
+
+  const unlockedIndices: number[] = [];
+  for (let i = 0; i < games.length; i++) {
+    if (games[i].lockedOutcome === null) {
+      unlockedIndices.push(i);
+    }
+  }
+
+  // Safe Excel in-browser limit (50,000 rows max to ensure snappy UI and prevent browser unresponsiveness)
+  const effectiveTotal = Math.min(totalRemaining, Math.max(1, maxRows), 50000);
+
+  // Headers: Combination #, Outcome Code, Game 1, Game 2...
+  const headers = ['Combination #', 'Outcome Code'];
+  games.forEach((g) => {
+    const label = g.homeTeam && g.awayTeam
+      ? `${g.label}: ${g.homeTeam} vs ${g.awayTeam}`
+      : g.label;
+    headers.push(label);
+  });
+
+  const rows: (string | number)[][] = [headers];
+  const CHUNK_SIZE = 5000;
+  let generated = 0;
+  const startTime = performance.now();
+  let lastProgressUpdate = startTime;
+
+  const currentOutcomes: ('1' | 'X' | '2')[] = new Array(games.length);
+  for (let g = 0; g < games.length; g++) {
+    if (games[g].lockedOutcome !== null) {
+      currentOutcomes[g] = games[g].lockedOutcome as ('1' | 'X' | '2');
+    }
+  }
+
+  const CHOICES: ('1' | 'X' | '2')[] = ['1', 'X', '2'];
+  const numUnlocked = unlockedIndices.length;
+
+  while (generated < effectiveTotal) {
+    if (shouldCancel()) {
+      return { blob: null, actualRows: 0 };
+    }
+
+    const batchEnd = Math.min(generated + CHUNK_SIZE, effectiveTotal);
+
+    for (let i = generated; i < batchEnd; i++) {
+      let rem = i;
+      for (let k = numUnlocked - 1; k >= 0; k--) {
+        currentOutcomes[unlockedIndices[k]] = CHOICES[rem % 3];
+        rem = Math.floor(rem / 3);
+      }
+      const code = currentOutcomes.join('');
+      rows.push([i + 1, code, ...currentOutcomes]);
+    }
+
+    generated = batchEnd;
+    const now = performance.now();
+
+    if (now - lastProgressUpdate > 50 || generated >= effectiveTotal) {
+      const elapsedSec = Math.max(0.01, (now - startTime) / 1000);
+      const rate = Math.round(generated / elapsedSec);
+      const percent = Math.min(96, Math.round((generated / effectiveTotal) * 95));
+
+      onProgress({
+        generated,
+        total: effectiveTotal,
+        percent,
+        ratePerSec: rate,
+      });
+      lastProgressUpdate = now;
+
+      // Yield thread to keep UI smoothly animated and responsive
+      await new Promise((r) => setTimeout(r, 12));
+    }
+  }
+
+  if (shouldCancel()) {
+    return { blob: null, actualRows: 0 };
+  }
+
+  onProgress({
+    generated: effectiveTotal,
+    total: effectiveTotal,
+    percent: 98,
+    ratePerSec: Math.round(effectiveTotal / Math.max(0.01, (performance.now() - startTime) / 1000)),
+  });
+
+  // Yield before final workbook compilation so browser repaints progress state
+  await new Promise((r) => setTimeout(r, 30));
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 15 },
+    { wch: Math.max(16, games.length + 4) },
+    ...games.map(() => ({ wch: 12 })),
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Jackpot Combinations');
+
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+
+  return { blob, actualRows: effectiveTotal };
+}

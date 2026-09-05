@@ -9,6 +9,7 @@ import {
   Download,
   Search,
   Layers,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { GameItem, GeneratedCombination } from '../types';
 import { getPageCombinations } from '../utils/combinationLogic';
@@ -16,7 +17,7 @@ import { getPageCombinations } from '../utils/combinationLogic';
 interface CombinationTableProps {
   games: GameItem[];
   totalRemaining: number;
-  onOpenExport: () => void;
+  onOpenExport: (format?: 'csv' | 'excel') => void;
 }
 
 export const CombinationTable: React.FC<CombinationTableProps> = ({
@@ -147,11 +148,24 @@ export const CombinationTable: React.FC<CombinationTableProps> = ({
             <button
               type="button"
               id="export-csv-table-btn"
-              onClick={onOpenExport}
+              onClick={() => onOpenExport('csv')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-900 bg-emerald-400 hover:bg-emerald-300 active:bg-emerald-500 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Export combinations to CSV format"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export CSV</span>
+            </button>
+
+            {/* Export as Excel Button */}
+            <button
+              type="button"
+              id="export-excel-table-btn"
+              onClick={() => onOpenExport('excel')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-950 bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 border border-emerald-300 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Export combinations as Excel (.xlsx) workbook"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Export as Excel</span>
             </button>
           </div>
         </div>

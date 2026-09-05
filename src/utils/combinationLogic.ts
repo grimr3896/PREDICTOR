@@ -105,14 +105,17 @@ export async function generateCsvBlob(
   games: GameItem[],
   totalRemaining: number,
   onProgress: (progress: CsvProgress) => void,
-  shouldCancel: () => boolean
-): Promise<Blob | null> {
+  shouldCancel: () => boolean,
+  maxRows?: number
+): Promise<{ blob: Blob | null; actualRows: number }> {
   const unlockedIndices: number[] = [];
   for (let i = 0; i < games.length; i++) {
     if (games[i].lockedOutcome === null) {
       unlockedIndices.push(i);
     }
   }
+
+  const effectiveTotal = maxRows ? Math.min(totalRemaining, maxRows) : totalRemaining;
 
   // Build CSV Header
   const headers = ['Combination #', 'Outcome Code'];
@@ -125,7 +128,7 @@ export async function generateCsvBlob(
   const headerLine = headers.join(',') + '\r\n';
 
   const chunks: string[] = [headerLine];
-  const CHUNK_SIZE = 25000; // Optimal batch size for string buffer and event loop yield
+  const CHUNK_SIZE = 10000; // Optimal batch size for string buffer and event loop yield
   let generated = 0;
   const startTime = performance.now();
   let lastProgressUpdate = startTime;
@@ -141,13 +144,15 @@ export async function generateCsvBlob(
   const CHOICES: ('1' | 'X' | '2')[] = ['1', 'X', '2'];
   const numUnlocked = unlockedIndices.length;
 
-  while (generated < totalRemaining) {
+  while (generated < effectiveTotal) {
     if (shouldCancel()) {
-      return null;
+      return { blob: null, actualRows: 0 };
     }
 
-    const batchEnd = Math.min(generated + CHUNK_SIZE, totalRemaining);
-    let chunkString = '';
+    const batchEnd = Math.min(generated + CHUNK_SIZE, effectiveTotal);
+    const batchCount = batchEnd - generated;
+    const batchLines = new Array(batchCount);
+    let lineIdx = 0;
 
     for (let i = generated; i < batchEnd; i++) {
       let rem = i;
@@ -157,31 +162,36 @@ export async function generateCsvBlob(
       }
       const code = currentOutcomes.join('');
       // Format: index, code, outcome1, outcome2, ...
-      chunkString += `${i + 1},${code},${currentOutcomes.join(',')}\r\n`;
+      batchLines[lineIdx++] = `${i + 1},${code},${currentOutcomes.join(',')}`;
     }
 
-    chunks.push(chunkString);
+    chunks.push(batchLines.join('\r\n') + '\r\n');
     generated = batchEnd;
 
     const now = performance.now();
-    // Update progress at most every 100ms or on completion
-    if (now - lastProgressUpdate > 100 || generated === totalRemaining) {
+    // Update progress at most every 60ms or on completion
+    if (now - lastProgressUpdate > 60 || generated === effectiveTotal) {
       const elapsedSec = (now - startTime) / 1000;
       const rate = elapsedSec > 0 ? Math.round(generated / elapsedSec) : 0;
       onProgress({
         generated,
-        total: totalRemaining,
-        percent: Math.min(100, Math.round((generated / totalRemaining) * 100)),
+        total: effectiveTotal,
+        percent: Math.min(100, Math.round((generated / effectiveTotal) * 100)),
         ratePerSec: rate,
       });
       lastProgressUpdate = now;
     }
 
-    // Yield control back to browser to process UI rendering and cancel clicks
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Yield control back to browser to process UI rendering, paint, and cancel clicks
+    await new Promise((resolve) => setTimeout(resolve, 8));
   }
 
-  return new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
+  if (shouldCancel()) {
+    return { blob: null, actualRows: 0 };
+  }
+
+  const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8;' });
+  return { blob, actualRows: effectiveTotal };
 }
 
 export const SAMPLE_TEAMS_17: { home: string; away: string }[] = [

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Layers, Lock, Unlock, Download, Play, TrendingDown, DollarSign } from 'lucide-react';
+import { Layers, Lock, Unlock, Download, Play, TrendingDown, DollarSign, RotateCcw, FileSpreadsheet } from 'lucide-react';
 import { CombinationStats } from '../types';
 
 interface StatsBarProps {
   stats: CombinationStats;
   poolSize: number;
   onGenerate: () => void;
-  onOpenExport: () => void;
+  onOpenExport: (format?: 'csv' | 'excel') => void;
+  onResetAll: () => void;
   isGeneratedViewActive: boolean;
 }
 
@@ -15,6 +16,7 @@ export const StatsBar: React.FC<StatsBarProps> = ({
   poolSize,
   onGenerate,
   onOpenExport,
+  onResetAll,
   isGeneratedViewActive,
 }) => {
   const [stakePerCombo, setStakePerCombo] = useState<number>(1);
@@ -28,6 +30,8 @@ export const StatsBar: React.FC<StatsBarProps> = ({
   const isExtremelyLarge = stats.remainingCombinations > 5000000;
   const isLarge = stats.remainingCombinations > 10000;
 
+  const lockedPercentage = Math.round((stats.lockedCount / poolSize) * 100);
+
   return (
     <section className="bg-white border-b border-zinc-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -35,38 +39,55 @@ export const StatsBar: React.FC<StatsBarProps> = ({
         <div className="bg-zinc-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm border border-zinc-800">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
             {/* Counter info */}
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   Live Calculation
                 </span>
-                <span className="text-xs text-zinc-400">
-                  {stats.lockedCount} of {poolSize} games fixed
+                <span className="text-xs text-zinc-300 font-medium">
+                  {stats.lockedCount} of {poolSize} games locked
                 </span>
               </div>
 
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span
                   id="live-combination-count"
-                  className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white font-mono"
+                  className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white font-mono transition-all duration-150"
                 >
                   {formattedRemaining}
                 </span>
-                <span className="text-sm font-medium text-zinc-300">
+                <span className="text-sm sm:text-base font-medium text-zinc-300">
                   combinations remaining
                 </span>
                 {stats.reductionPercentage > 0 && (
-                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-800/60 inline-flex items-center gap-1">
+                  <span className="text-xs font-semibold text-emerald-400 bg-emerald-950/70 px-2.5 py-1 rounded-md border border-emerald-800/80 inline-flex items-center gap-1">
                     <TrendingDown className="w-3 h-3" />
                     {stats.reductionPercentage.toFixed(2)}% filtered
                   </span>
                 )}
               </div>
 
-              <p className="text-xs text-zinc-400">
-                Out of <span className="font-mono text-zinc-200">{formattedTotal}</span> total unfiltered possibilities (3<sup>{poolSize}</sup>).
-              </p>
+              {/* Live Progress indicator near counter */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-0.5">
+                <div className="w-36 sm:w-56 bg-zinc-800 rounded-full h-2.5 overflow-hidden border border-zinc-700/80 p-0.5">
+                  <div
+                    className="h-full bg-emerald-400 rounded-full transition-all duration-200 ease-out"
+                    style={{ width: `${(stats.lockedCount / poolSize) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-emerald-400 font-mono">
+                  {stats.lockedCount} of {poolSize} games locked
+                </span>
+                {stats.lockedCount > 0 && (
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    ({lockedPercentage}%)
+                  </span>
+                )}
+                <span className="text-xs text-zinc-400">
+                  • Out of <span className="font-mono text-zinc-200">{formattedTotal}</span> total unfiltered (3<sup>{poolSize}</sup>)
+                </span>
+              </div>
             </div>
 
             {/* Quick Action Buttons */}
@@ -84,11 +105,40 @@ export const StatsBar: React.FC<StatsBarProps> = ({
               <button
                 type="button"
                 id="download-csv-top-btn"
-                onClick={onOpenExport}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-850 text-white border border-zinc-700 shadow-sm transition-all cursor-pointer"
+                onClick={() => onOpenExport('csv')}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-850 text-white border border-zinc-700 shadow-sm transition-all cursor-pointer"
+                title="Download combinations as CSV"
               >
                 <Download className="w-4 h-4 text-emerald-400" />
-                <span>Download as CSV</span>
+                <span>Export CSV</span>
+              </button>
+
+              <button
+                type="button"
+                id="export-excel-top-btn"
+                onClick={() => onOpenExport('excel')}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm bg-emerald-950/80 hover:bg-emerald-900 active:bg-emerald-800 text-emerald-200 border border-emerald-700/80 shadow-sm transition-all cursor-pointer"
+                title="Export combinations as native Excel (.xlsx) file"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <span>Export as Excel</span>
+              </button>
+
+              {/* Reset all locks button */}
+              <button
+                type="button"
+                id="reset-all-locks-top-btn"
+                onClick={onResetAll}
+                disabled={stats.lockedCount === 0}
+                className={`inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm border transition-all cursor-pointer ${
+                  stats.lockedCount > 0
+                    ? 'bg-rose-500/20 hover:bg-rose-500/30 active:bg-rose-500/35 text-rose-200 border-rose-500/40 shadow-xs'
+                    : 'bg-zinc-800/40 text-zinc-500 border-zinc-800 opacity-40 cursor-not-allowed'
+                }`}
+                title="Clear every locked game back to Not sure and restore 3^n combinations"
+              >
+                <RotateCcw className="w-4 h-4 text-rose-400" />
+                <span>Reset all locks</span>
               </button>
             </div>
           </div>
